@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+redis
+pydantic
+pydantic-settings
+python-dotenv
+alembic
+prometheus-client
+fakeredis

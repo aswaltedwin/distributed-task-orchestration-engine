@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Plane — Distributed Task Engine</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
+                            950: '#1e1b4b',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            background-color: #030712;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+
+        .glass-card-glow:hover {
+            box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.4);
+            border-color: rgba(99, 102, 241, 0.35);
+            transform: translateY(-2px);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.3);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="text-slate-100 font-sans min-h-screen antialiased flex flex-col" x-data="dashboardApp()" x-init="init()">
+
+    <!-- TOP HEADER -->
+    <header class="glass-panel border-b border-slate-800/80 sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <!-- Glowing Logo -->
+            <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-500 to-cyan-400 text-white font-bold shadow-lg shadow-brand-500/20">
+                <i data-lucide="cpu" class="w-5 h-5 animate-pulse"></i>
+                <div class="absolute inset-0 rounded-xl bg-gradient-to-tr from-brand-500 to-cyan-400 blur opacity-40 -z-10"></div>
+            </div>
+            <div>
+                <h1 class="font-display font-bold text-xl tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">Antigravity Control</h1>
+                <p class="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Distributed Task Engine Plane</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <!-- Connection Status -->
+            <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-slate-900/60 border border-slate-800 text-xs">
+                <span class="relative flex h-2.5 w-2.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" :class="connected ? 'bg-emerald-400' : 'bg-rose-400'"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5" :class="connected ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                </span>
+                <span class="font-medium text-slate-300" x-text="connected ? 'Connected' : 'Disconnected'">Connecting...</span>
+            </div>
+
+            <!-- API Key Input -->
+            <div class="relative" x-data="{ show: false }">
+                <div class="flex items-center space-x-2 bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-1">
+                    <i data-lucide="key" class="w-4 h-4 text-slate-400"></i>
+                    <input 
+                        id="apiKeyInput"
+                        :type="show ? 'text' : 'password'" 
+                        x-model="apiKey"
+                        @change="saveApiKey()"
+                        class="bg-transparent border-none text-xs text-slate-200 outline-none w-28 focus:w-40 transition-all duration-300 placeholder-slate-600" 
+                        placeholder="API Key"
+                    />
+                    <button @click="show = !show" class="text-slate-400 hover:text-slate-200 outline-none focus:outline-none">
+                        <i :data-lucide="show ? 'eye-off' : 'eye'" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Refresh Actions -->
+            <div class="flex items-center space-x-2">
+                <button 
+                    id="refreshBtn"
+                    @click="refreshData(true)" 
+                    class="p-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all duration-200"
+                    title="Manual Refresh"
+                >
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading ? 'animate-spin' : ''"></i>
+                </button>
+                <div class="flex items-center space-x-2 bg-slate-900/60 border border-slate-800 px-3 py-2 rounded-lg text-xs text-slate-400">
+                    <span class="hidden sm:inline">Auto refresh:</span>
+                    <button 
+                        id="autoRefreshToggle"
+                        @click="toggleAutoRefresh()" 
+                        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                        :class="autoRefresh ? 'bg-brand-500' : 'bg-slate-700'"
+                    >
+                        <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="autoRefresh ? 'translate-x-4' : 'translate-x-0'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-grow p-6 space-y-6 max-w-[1600px] mx-auto w-full">
+
+        <!-- ERROR MESSAGE BANNER -->
+        <div x-show="errorMessage" x-transition class="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-start space-x-3">
+            <i data-lucide="alert-octagon" class="w-5 h-5 shrink-0 mt-0.5"></i>
+            <div class="flex-grow">
+                <h4 class="font-bold">Communication Error</h4>
+                <p x-text="errorMessage"></p>
+            </div>
+            <button @click="errorMessage = ''" class="text-rose-400 hover:text-rose-200">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
+        <!-- STATS HERO SECTION -->
+        <section class="grid grid-cols-2 lg:grid-cols-6 gap-4">
+            <!-- Queued -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-brand-500/5 group-hover:text-brand-500/10 transition-colors">
+                    <i data-lucide="hourglass" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Queued</span>
+                    <span class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+                        <i data-lucide="hourglass" class="w-4 h-4"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-indigo-200" x-text="stats.queued || 0">0</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Awaiting available worker</div>
+            </div>
+
+            <!-- Running -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-cyan-500/5 group-hover:text-cyan-500/10 transition-colors">
+                    <i data-lucide="play" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Running</span>
+                    <span class="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
+                        <i data-lucide="play" class="w-4 h-4 animate-pulse"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-cyan-300" x-text="stats.running || 0">0</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Actively executing in cluster</div>
+            </div>
+
+            <!-- Scheduled -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-amber-500/5 group-hover:text-amber-500/10 transition-colors">
+                    <i data-lucide="calendar" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Scheduled</span>
+                    <span class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                        <i data-lucide="calendar" class="w-4 h-4"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-amber-300" x-text="stats.scheduled || 0">0</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Deferred runtime tasks</div>
+            </div>
+
+            <!-- Dead Letter -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-rose-500/5 group-hover:text-rose-500/10 transition-colors">
+                    <i data-lucide="skull" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dead Letter</span>
+                    <span class="p-1.5 rounded-lg bg-rose-500/10 text-rose-400" :class="(stats.dead_letter || 0) > 0 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : ''">
+                        <i data-lucide="skull" class="w-4 h-4"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-rose-400" x-text="stats.dead_letter || 0">0</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Exhausted failure limit</div>
+            </div>
+
+            <!-- Succeeded -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-emerald-500/5 group-hover:text-emerald-500/10 transition-colors">
+                    <i data-lucide="check-circle" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Succeeded</span>
+                    <span class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                        <i data-lucide="check-circle" class="w-4 h-4"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-emerald-400" x-text="stats.success || 0">0</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Successfully completed</div>
+            </div>
+
+            <!-- Active Workers -->
+            <div class="glass-panel rounded-2xl p-5 relative overflow-hidden transition-all duration-300 glass-card-glow group">
+                <div class="absolute -right-4 -bottom-4 text-violet-500/5 group-hover:text-violet-500/10 transition-colors">
+                    <i data-lucide="users" class="w-24 h-24"></i>
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Engine Nodes</span>
+                    <span class="p-1.5 rounded-lg bg-violet-500/10 text-violet-400">
+                        <i data-lucide="users" class="w-4 h-4"></i>
+                    </span>
+                </div>
+                <div class="font-display font-bold text-3xl tracking-tight text-violet-300" x-text="health.worker_capacity || 'N/A'">N/A</div>
+                <div class="text-[10px] text-slate-400 mt-1 font-medium">Concurrency allocation</div>
+            </div>
+        </section>
+
+        <!-- ANALYTICS & INJECT LAB -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Live Charts / Stats -->
+            <div class="glass-panel rounded-2xl p-5 lg:col-span-2 flex flex-col space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-display font-semibold text-lg flex items-center space-x-2">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-brand-400"></i>
+                        <span>System Distribution</span>
+                    </h3>
+                    <span class="text-xs text-slate-400 font-medium">Aggregate metrics visualization</span>
+                </div>
+                <!-- Chart container -->
+                <div class="relative flex-grow min-h-[220px] max-h-[260px] flex items-center justify-center">
+                    <canvas id="statsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Task submission / Inject Lab -->
+            <div class="glass-panel rounded-2xl p-5 flex flex-col space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-display font-semibold text-lg flex items-center space-x-2">
+                        <i data-lucide="send" class="w-5 h-5 text-brand-400"></i>
+                        <span>Task Dispatcher Lab</span>
+                    </h3>
+                    <span class="px-2 py-0.5 text-[10px] rounded-md bg-brand-500/20 text-brand-300 font-bold tracking-wider uppercase border border-brand-500/30">Console</span>
+                </div>
+                
+                <form @submit.prevent="submitTask()" class="space-y-3.5 text-xs">
+                    <!-- Task Type -->
+                    <div>
+                        <label for="taskType" class="block text-slate-400 font-semibold mb-1">Task Type</label>
+                        <select 
+                            id="taskType" 
+                            x-model="submitForm.task_type"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-500 outline-none transition-colors"
+                        >
+                            <option value="send_email">send_email (Simulate 2s email send)</option>
+                            <option value="generate_report">generate_report (Simulate 5s heavy compile)</option>
+                            <option value="chaos_sleep">chaos_sleep (Simulate 10s sleep for crash tests)</option>
+                            <option value="infinite_loop">infinite_loop (Stuck task - test process isolation)</option>
+                            <option value="echo">echo (Print payload value)</option>
+                        </select>
+                    </div>
+
+                    <!-- Priority -->
+                    <div>
+                        <label for="taskPriority" class="block text-slate-400 font-semibold mb-1">Queue Priority</label>
+                        <select 
+                            id="taskPriority" 
+                            x-model="submitForm.priority"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-500 outline-none transition-colors"
+                        >
+                            <option value="HIGH">HIGH (Fast track - Lua atomic enqueues first)</option>
+                            <option value="NORMAL">NORMAL (Standard queue level)</option>
+                            <option value="LOW">LOW (Background processing only)</option>
+                        </select>
+                    </div>
+
+                    <!-- Timeout & Idempotency -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label for="taskTimeout" class="block text-slate-400 font-semibold mb-1">Timeout (Sec)</label>
+                            <input 
+                                id="taskTimeout" 
+                                type="number" 
+                                x-model.number="submitForm.timeout"
+                                class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-500 outline-none transition-colors"
+                                placeholder="60"
+                            />
+                        </div>
+                        <div>
+                            <label for="taskKey" class="block text-slate-400 font-semibold mb-1">Idempotency Key</label>
+                            <input 
+                                id="taskKey" 
+                                type="text" 
+                                x-model="submitForm.idempotency_key"
+                                class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-500 outline-none transition-colors"
+                                placeholder="Optional Unique ID"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- JSON Payload -->
+                    <div>
+                        <label for="taskPayload" class="block text-slate-400 font-semibold mb-1">JSON Payload</label>
+                        <textarea 
+                            id="taskPayload" 
+                            rows="2" 
+                            x-model="submitForm.payloadString"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 focus:border-brand-500 outline-none font-mono text-[10px] transition-colors"
+                        ></textarea>
+                    </div>
+
+                    <!-- Dispatch Button -->
+                    <button 
+                        id="submitTaskBtn"
+                        type="submit" 
+                        class="w-full bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-lg shadow-brand-500/20 active:scale-[0.98] transition-all duration-150 flex items-center justify-center space-x-2"
+                        :disabled="dispatching"
+                    >
+                        <i data-lucide="zap" class="w-4 h-4" :class="dispatching ? 'animate-bounce' : ''"></i>
+                        <span x-text="dispatching ? 'Dispatching Task...' : 'Dispatch Task to Cluster'">Dispatch Task</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- MAIN TASKS INSPECTOR & TABS -->
+        <section class="glass-panel rounded-2xl p-5 flex flex-col space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="flex items-center space-x-2">
+                    <h3 class="font-display font-semibold text-lg flex items-center space-x-2">
+                        <i data-lucide="layers" class="w-5 h-5 text-brand-400"></i>
+                        <span>Cluster Task Registry</span>
+                    </h3>
+                </div>
+
+                <!-- Filters & Search -->
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Search -->
+                    <div class="relative text-xs">
+                        <input 
+                            id="taskSearchInput"
+                            type="text" 
+                            x-model="filters.search"
+                            @input.debounce.300ms="refreshTasks()"
+                            placeholder="Search by ID or type..." 
+                            class="bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-3 py-2 outline-none text-slate-200 focus:border-brand-500 w-52 sm:w-60 transition-all duration-200"
+                        />
+                        <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500"></i>
+                        <button x-show="filters.search" @click="filters.search = ''; refreshTasks()" class="absolute right-3 top-2.5 text-slate-500 hover:text-slate-200">
+                            <i data-lucide="x" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+
+                    <!-- Priority Filter -->
+                    <select 
+                        id="priorityFilterSelect"
+                        x-model="filters.priority" 
+                        @change="refreshTasks()" 
+                        class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs outline-none text-slate-300 focus:border-brand-500"
+                    >
+                        <option value="">All Priorities</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="NORMAL">NORMAL</option>
+                        <option value="LOW">LOW</option>
+                    </select>
+
+                    <!-- Limit Filter -->
+                    <select 
+                        id="limitFilterSelect"
+                        x-model.number="filters.limit" 
+                        @change="refreshTasks()" 
+                        class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs outline-none text-slate-300 focus:border-brand-500"
+                    >
+                        <option value="25">Show 25</option>
+                        <option value="50">Show 50</option>
+                        <option value="100">Show 100</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Status Tabs -->
+            <div class="border-b border-slate-800 flex items-center space-x-1 overflow-x-auto">
+                <button 
+                    id="tabAllBtn"
+                    @click="setStatusFilter('')" 
+                    class="px-4 py-2 border-b-2 text-xs font-semibold tracking-wider uppercase transition-all duration-200 shrink-0"
+                    :class="filters.status === '' ? 'border-brand-500 text-brand-400 bg-brand-500/5' : 'border-transparent text-slate-400 hover:text-slate-200'"
+                >
+                    All Tasks
+                </button>
+                <template x-for="status in ['QUEUED', 'RUNNING', 'SCHEDULED', 'FAILED', 'DEAD_LETTER', 'SUCCESS', 'CANCELLED']">
+                    <button 
+                        :id="'tab' + status + 'Btn'"
+                        @click="setStatusFilter(status)" 
+                        class="px-4 py-2 border-b-2 text-xs font-semibold tracking-wider uppercase transition-all duration-200 shrink-0 flex items-center space-x-1.5"
+                        :class="filters.status === status ? 'border-brand-500 text-brand-400 bg-brand-500/5' : 'border-transparent text-slate-400 hover:text-slate-200'"
+                    >
+                        <span x-text="status.replace('_', ' ')"></span>
+                        <span class="px-1.5 py-0.5 rounded-md text-[9px] bg-slate-800 text-slate-400 font-bold" x-text="stats[status.toLowerCase()] || 0">0</span>
+                    </button>
+                </template>
+            </div>
+
+            <!-- Tasks Table -->
+            <div class="overflow-x-auto min-h-[250px]">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
+                            <th class="py-3.5 px-4">Task ID / Type</th>
+                            <th class="py-3.5 px-4">Status</th>
+                            <th class="py-3.5 px-4">Priority</th>
+                            <th class="py-3.5 px-4">Claimed By (Host)</th>
+                            <th class="py-3.5 px-4">Retries</th>
+                            <th class="py-3.5 px-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/60">
+                        <template x-if="tasks.length === 0">
+                            <tr>
+                                <td colspan="6" class="py-12 text-center text-slate-500">
+                                    <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-600"></i>
+                                    <p class="font-medium text-sm">No tasks match selected filter parameters</p>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-for="task in tasks" :key="task.id">
+                            <tr class="hover:bg-slate-900/30 transition-colors group">
+                                <td class="py-3.5 px-4">
+                                    <div class="flex flex-col">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="font-mono text-slate-300 font-semibold tracking-wide" x-text="task.id.slice(0, 8) + '...'" :title="task.id"></span>
+                                            <span x-show="task.cancel_requested" class="px-1.5 py-0.5 text-[9px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md">Cancel Pending</span>
+                                        </div>
+                                        <span class="text-[10px] text-slate-400 font-medium font-display" x-text="task.task_type"></span>
+                                    </div>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase border inline-flex items-center space-x-1" 
+                                          :class="{
+                                              'bg-indigo-500/10 text-indigo-400 border-indigo-500/20': task.status === 'QUEUED',
+                                              'bg-cyan-500/10 text-cyan-400 border-cyan-500/20': task.status === 'RUNNING',
+                                              'bg-amber-500/10 text-amber-400 border-amber-500/20': task.status === 'SCHEDULED',
+                                              'bg-rose-500/10 text-rose-400 border-rose-500/20': task.status === 'DEAD_LETTER' || task.status === 'FAILED',
+                                              'bg-emerald-500/10 text-emerald-400 border-emerald-500/20': task.status === 'SUCCESS',
+                                              'bg-slate-800 text-slate-400 border-slate-700': task.status === 'CANCELLED'
+                                          }">
+                                        <span class="relative flex h-1.5 w-1.5 mr-1" x-show="task.status === 'RUNNING'">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+                                        </span>
+                                        <span x-text="task.status.replace('_', ' ')"></span>
+                                    </span>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <span class="font-semibold text-[10px] tracking-wider" 
+                                          :class="{
+                                              'text-rose-400': task.priority === 'HIGH',
+                                              'text-slate-300': task.priority === 'NORMAL',
+                                              'text-slate-500': task.priority === 'LOW'
+                                          }" x-text="task.priority"></span>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <template x-if="task.claimed_by">
+                                        <div class="flex flex-col">
+                                            <span class="font-mono text-slate-300 font-semibold" x-text="task.claimed_by"></span>
+                                            <span class="text-[10px] text-slate-500" x-text="task.worker_host"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="!task.claimed_by">
+                                        <span class="text-slate-600 font-medium">Unclaimed</span>
+                                    </template>
+                                </td>
+                                <td class="py-3.5 px-4">
+                                    <span class="font-mono text-slate-300 font-bold" x-text="task.retry_count">0</span>
+                                </td>
+                                <td class="py-3.5 px-4 text-right">
+                                    <div class="flex items-center justify-end space-x-1.5">
+                                        <!-- Inspect -->
+                                        <button 
+                                            @click="inspectTask(task)"
+                                            class="p-1.5 rounded bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 transition-colors"
+                                            title="Inspect Task State"
+                                        >
+                                            <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                        
+                                        <!-- Requeue (if Dead Letter) -->
+                                        <button 
+                                            :id="'requeueBtn-' + task.id"
+                                            x-show="task.status === 'DEAD_LETTER' || task.status === 'FAILED'"
+                                            @click="requeueTask(task.id)"
+                                            class="p-1.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-white border border-emerald-500/20 transition-colors"
+                                            title="Requeue Task"
+                                        >
+                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                        </button>
+
+                                        <!-- Cancel (if cancelable) -->
+                                        <button 
+                                            :id="'cancelBtn-' + task.id"
+                                            x-show="task.status === 'QUEUED' || task.status === 'RUNNING' || task.status === 'SCHEDULED'"
+                                            @click="cancelTask(task.id)"
+                                            class="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-white border border-rose-500/20 transition-colors"
+                                            title="Cancel Task"
+                                        >
+                                            <i data-lucide="ban" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- TASK DETAIL MODAL -->
+    <div 
+        id="taskDetailModal"
+        x-show="inspectedTask !== null" 
+        x-transition 
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+        @keydown.escape.window="inspectedTask = null"
+        style="display: none;"
+    >
+        <div class="glass-panel w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-4" @click.outside="inspectedTask = null">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                    <h3 class="font-display font-bold text-lg text-slate-100 flex items-center space-x-2">
+                        <i data-lucide="binary" class="w-5 h-5 text-brand-400"></i>
+                        <span>Inspect Task State</span>
+                    </h3>
+                    <p class="text-[10px] text-slate-400 font-mono mt-0.5" x-text="inspectedTask?.id"></p>
+                </div>
+                <button @click="inspectedTask = null" class="text-slate-400 hover:text-slate-200">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 text-xs">
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Task Type</span>
+                    <p class="text-slate-200 font-medium" x-text="inspectedTask?.task_type"></p>
+                </div>
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Status</span>
+                    <div>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase border inline-flex items-center space-x-1" 
+                              :class="{
+                                  'bg-indigo-500/10 text-indigo-400 border-indigo-500/20': inspectedTask?.status === 'QUEUED',
+                                  'bg-cyan-500/10 text-cyan-400 border-cyan-500/20': inspectedTask?.status === 'RUNNING',
+                                  'bg-amber-500/10 text-amber-400 border-amber-500/20': inspectedTask?.status === 'SCHEDULED',
+                                  'bg-rose-500/10 text-rose-400 border-rose-500/20': inspectedTask?.status === 'DEAD_LETTER' || inspectedTask?.status === 'FAILED',
+                                  'bg-emerald-500/10 text-emerald-400 border-emerald-500/20': inspectedTask?.status === 'SUCCESS',
+                                  'bg-slate-800 text-slate-400 border-slate-700': inspectedTask?.status === 'CANCELLED'
+                              }">
+                            <span x-text="inspectedTask?.status"></span>
+                        </span>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Priority</span>
+                    <p class="text-slate-200 font-medium" x-text="inspectedTask?.priority"></p>
+                </div>
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Retries</span>
+                    <p class="text-slate-200 font-medium font-mono" x-text="inspectedTask?.retry_count"></p>
+                </div>
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Worker Node / Host</span>
+                    <p class="text-slate-200 font-medium" x-text="inspectedTask?.claimed_by ? `${inspectedTask.claimed_by} on ${inspectedTask.worker_host}` : 'Unclaimed'"></p>
+                </div>
+                <div class="space-y-1">
+                    <span class="text-slate-500 font-semibold">Timeout Limit</span>
+                    <p class="text-slate-200 font-medium" x-text="`${inspectedTask?.timeout} Seconds`"></p>
+                </div>
+            </div>
+
+            <!-- Payload Section -->
+            <div class="space-y-1.5 text-xs">
+                <span class="text-slate-500 font-semibold">JSON Payload</span>
+                <pre class="bg-slate-900 border border-slate-800 rounded-lg p-3 overflow-x-auto text-[10px] font-mono text-cyan-400 max-h-[120px]" x-text="JSON.stringify(inspectedTask?.payload, null, 2)"></pre>
+            </div>
+
+            <!-- Error message if FAILED / DEAD LETTER -->
+            <div class="space-y-1.5 text-xs" x-show="inspectedTask?.last_error">
+                <span class="text-rose-400 font-semibold">Execution Failure Message</span>
+                <pre class="bg-rose-950/20 border border-rose-500/20 rounded-lg p-3 overflow-x-auto text-[10px] font-mono text-rose-300 max-h-[120px]" x-text="inspectedTask?.last_error"></pre>
+            </div>
+
+            <div class="flex justify-end space-x-3 border-t border-slate-800 pt-3 text-xs">
+                <button @click="inspectedTask = null" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2 px-4 rounded-lg">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="glass-panel border-t border-slate-800/80 px-6 py-4 flex items-center justify-between text-xs text-slate-400 mt-12 shrink-0">
+        <div>Distributed Task Engine Controller v1.0</div>
+        <div class="flex items-center space-x-2">
+            <span>Powered by</span>
+            <span class="text-indigo-400 font-semibold font-display tracking-tight">Antigravity Systems</span>
+        </div>
+    </footer>
+
+    <!-- ALPINE ENGINE CONTROLLER -->
+    <script>
+        function dashboardApp() {
+            return {
+                apiKey: 'supersecret',
+                connected: false,
+                loading: false,
+                dispatching: false,
+                autoRefresh: true,
+                refreshInterval: null,
+                errorMessage: '',
+                inspectedTask: null,
+                
+                stats: {
+                    queued: 0,
+                    running: 0,
+                    scheduled: 0,
+                    dead_letter: 0,
+                    success: 0,
+                    failed: 0,
+                    cancelled: 0
+                },
+                health: {
+                    status: 'unknown',
+                    checks: {},
+                    worker_capacity: 'N/A'
+                },
+                tasks: [],
+                filters: {
+                    status: '',
+                    priority: '',
+                    search: '',
+                    limit: 25
+                },
+                submitForm: {
+                    task_type: 'send_email',
+                    priority: 'NORMAL',
+                    timeout: 60,
+                    idempotency_key: '',
+                    payloadString: '{\n  "to": "user@example.com",\n  "subject": "System Hello!"\n}'
+                },
+                
+                chart: null,
+
+                init() {
+                    // Load saved api key
+                    const saved = localStorage.getItem('api_key');
+                    if (saved) {
+                        this.apiKey = saved;
+                    }
+                    
+                    // Initial load
+                    this.refreshData();
+                    
+                    // Setup interval polling
+                    this.refreshInterval = setInterval(() => {
+                        if (this.autoRefresh) {
+                            this.refreshData(false);
+                        }
+                    }, 5000);
+
+                    // Initialize lucide
+                    setTimeout(() => {
+                        lucide.createIcons();
+                    }, 500);
+                },
+
+                saveApiKey() {
+                    localStorage.setItem('api_key', this.apiKey);
+                    this.refreshData(true);
+                },
+
+                toggleAutoRefresh() {
+                    this.autoRefresh = !this.autoRefresh;
+                },
+
+                async refreshData(manual = false) {
+                    if (manual) {
+                        this.loading = true;
+                    }
+                    
+                    try {
+                        const headers = {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': this.apiKey
+                        };
+
+                        // Fetch Health
+                        const healthRes = await fetch('/admin/health', { headers });
+                        if (!healthRes.ok) throw new Error(await healthRes.text());
+                        this.health = await healthRes.json();
+                        this.connected = true;
+
+                        // Fetch Stats
+                        const statsRes = await fetch('/admin/stats', { headers });
+                        if (!statsRes.ok) throw new Error(await statsRes.text());
+                        this.stats = await statsRes.json();
+
+                        // Refresh tasks list
+                        await this.refreshTasks();
+
+                        this.errorMessage = '';
+                        this.updateChart();
+
+                    } catch (err) {
+                        console.error("Refresh error:", err);
+                        this.connected = false;
+                        this.errorMessage = err.message || "Failed to communicate with control plane services.";
+                    } finally {
+                        if (manual) {
+                            this.loading = false;
+                        }
+                        this.$nextTick(() => {
+                            lucide.createIcons();
+                        });
+                    }
+                },
+
+                async refreshTasks() {
+                    try {
+                        const headers = {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': this.apiKey
+                        };
+
+                        let url = `/admin/tasks?limit=${this.filters.limit}`;
+                        if (this.filters.status) url += `&status=${this.filters.status}`;
+                        if (this.filters.priority) url += `&priority=${this.filters.priority}`;
+                        if (this.filters.search) url += `&search=${encodeURIComponent(this.filters.search)}`;
+
+                        const tasksRes = await fetch(url, { headers });
+                        if (!tasksRes.ok) throw new Error(await tasksRes.text());
+                        this.tasks = await tasksRes.json();
+
+                    } catch (err) {
+                        console.error("Tasks refresh error:", err);
+                    }
+                },
+
+                setStatusFilter(status) {
+                    this.filters.status = status;
+                    this.refreshTasks();
+                },
+
+                inspectTask(task) {
+                    this.inspectedTask = task;
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
+                },
+
+                async requeueTask(taskId) {
+                    try {
+                        const res = await fetch(`/admin/tasks/${taskId}/requeue`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-API-Key': this.apiKey
+                            }
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        
+                        this.refreshData(true);
+                    } catch (err) {
+                        alert("Requeue failed: " + err.message);
+                    }
+                },
+
+                async cancelTask(taskId) {
+                    try {
+                        const res = await fetch(`/tasks/${taskId}/cancel`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-API-Key': this.apiKey
+                            }
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        
+                        this.refreshData(true);
+                    } catch (err) {
+                        alert("Cancellation failed: " + err.message);
+                    }
+                },
+
+                async submitTask() {
+                    this.dispatching = true;
+                    try {
+                        let parsedPayload = {};
+                        try {
+                            parsedPayload = JSON.parse(this.submitForm.payloadString);
+                        } catch (e) {
+                            throw new Error("Invalid JSON payload structure.");
+                        }
+
+                        const requestData = {
+                            task_type: this.submitForm.task_type,
+                            payload: parsedPayload,
+                            priority: this.submitForm.priority,
+                            timeout: this.submitForm.timeout
+                        };
+
+                        if (this.submitForm.idempotency_key) {
+                            requestData.idempotency_key = this.submitForm.idempotency_key;
+                        }
+
+                        const res = await fetch('/tasks', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-API-Key': this.apiKey
+                            },
+                            body: JSON.stringify(requestData)
+                        });
+
+                        if (!res.ok) throw new Error(await res.text());
+
+                        // Reset form optionals
+                        this.submitForm.idempotency_key = '';
+                        
+                        this.refreshData(true);
+                    } catch (err) {
+                        alert("Dispatch Error: " + err.message);
+                    } finally {
+                        this.dispatching = false;
+                    }
+                },
+
+                updateChart() {
+                    const ctx = document.getElementById('statsChart').getContext('2d');
+                    const dataValues = [
+                        this.stats.queued || 0,
+                        this.stats.running || 0,
+                        this.stats.scheduled || 0,
+                        this.stats.success || 0,
+                        this.stats.dead_letter || 0,
+                        this.stats.cancelled || 0
+                    ];
+
+                    if (window.statsChartInstance) {
+                        window.statsChartInstance.data.datasets[0].data = dataValues;
+                        window.statsChartInstance.update();
+                        return;
+                    }
+
+                    window.statsChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Queued', 'Running', 'Scheduled', 'Succeeded', 'Dead Letter', 'Cancelled'],
+                            datasets: [{
+                                label: 'Task Count',
+                                data: dataValues,
+                                backgroundColor: [
+                                    'rgba(99, 102, 241, 0.45)', // Indigo
+                                    'rgba(6, 182, 212, 0.45)',  // Cyan
+                                    'rgba(245, 158, 11, 0.45)', // Amber
+                                    'rgba(16, 185, 129, 0.45)', // Emerald
+                                    'rgba(244, 63, 94, 0.45)',  // Rose
+                                    'rgba(71, 85, 105, 0.45)'   // Slate
+                                ],
+                                borderColor: [
+                                    '#6366f1',
+                                    '#06b6d4',
+                                    '#f59e0b',
+                                    '#10b981',
+                                    '#f43f5e',
+                                    '#475569'
+                                ],
+                                borderWidth: 1.5,
+                                borderRadius: 6
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.05)'
+                                    },
+                                    ticks: {
+                                        color: '#94a3b8',
+                                        font: {
+                                            family: 'Inter',
+                                            size: 10
+                                        },
+                                        stepSize: 1
+                                    }
+                                },
+                                x: {
+                                    grid: {
+                                        display: false
+                                    },
+                                    ticks: {
+                                        color: '#94a3b8',
+                                        font: {
+                                            family: 'Outfit',
+                                            size: 10
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+            };
+        }
+    </script>
+</body>
+</html>

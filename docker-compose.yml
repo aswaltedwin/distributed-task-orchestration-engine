@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: taskdb
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d taskdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  init-db:
+    build: .
+    command: python -m app.init_db
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+      - API_KEY=supersecret
+      - WORKER_CONCURRENCY=5
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+
+  worker:
+    build: .
+    command: python -m app.worker
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+      - WORKER_CONCURRENCY=3
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+    deploy:
+      replicas: 2
+
+  scheduler:
+    build: .
+    command: python -m app.scheduler
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+
+  reaper:
+    build: .
+    command: python -m app.reaper
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully
+
+  sweeper:
+    build: .
+    command: python -m app.sweeper
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/taskdb
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init-db:
+        condition: service_completed_successfully

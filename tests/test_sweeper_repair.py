@@ -49,7 +49,7 @@ def test_sweeper_repair(mock_queue):
 
     # 4. Verification
     # Verify Redis enqueue was called
-    mock_queue.enqueue.assert_called_once_with(task_id)
+    mock_queue.enqueue.assert_called_once_with(task_id, priority=stranded_task.priority)
     print("Verification passed: Stranded task repaired and enqueued.")
 
 if __name__ == "__main__":

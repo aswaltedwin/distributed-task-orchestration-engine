@@ -61,7 +61,7 @@ def test_scheduler_promotion(mock_queue):
     print(f"Final Task Status: {scheduled_task.status}")
 
     assert scheduled_task.status == TaskStatus.QUEUED
-    mock_queue.enqueue.assert_called_once_with(task_id)
+    mock_queue.enqueue.assert_called_once_with(task_id, priority=scheduled_task.priority)
     print("Verification passed: Task promoted and enqueued correctly.")
 
 if __name__ == "__main__":

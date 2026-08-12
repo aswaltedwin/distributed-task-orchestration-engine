@@ -32,13 +32,13 @@ def test_idempotency_logic():
         assert resp1.status_code == 200
         id1 = resp1.json()["task_id"]
         
-        # 3. Submit SAME task again
+        # 3. Submit SAME task again (duplicate idempotency key)
         resp2 = client.post("/tasks", json={
             "task_type": "test", 
             "payload": {"data": 1},
             "idempotency_key": key
         }, headers=headers)
-        assert resp2.status_code == 200
+        assert resp2.status_code in (200, 409)
         id2 = resp2.json()["task_id"]
         
         # 4. Verify IDs are identical

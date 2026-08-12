@@ -62,7 +62,7 @@ def test_reaper_crash_recovery(mock_queue):
     assert "Recovered stale task" in crashed_task.last_error
     
     # Verify Redis enqueue was called
-    mock_queue.enqueue.assert_called_once_with(task_id)
+    mock_queue.enqueue.assert_called_once_with(task_id, priority=crashed_task.priority)
     print("Verification passed: Task recovered and requeued.")
 
 if __name__ == "__main__":

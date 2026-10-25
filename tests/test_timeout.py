@@ -21,7 +21,7 @@ def test_hard_timeout(mock_q):
     # 1. Create task with 3s timeout
     task_id = "timeout-test"
     # Ensure task exists
-    existing = db.query(Task).get(task_id)
+    existing = db.get(Task, task_id)
     if existing:
         db.delete(existing)
         db.commit()
@@ -39,7 +39,7 @@ def test_hard_timeout(mock_q):
     
     # 3. Verification
     db.expire_all()
-    task = db.query(Task).get(task_id)
+    task = db.get(Task, task_id)
     print(f"Task status: {task.status}")
     print(f"Last error: {task.last_error}")
     print(f"Duration: {duration:.2f}s")

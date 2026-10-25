@@ -39,7 +39,7 @@ def test_backoff_logic(mock_queue):
     process_task(task_id, sem)
     
     # 3. Verification
-    task = db.query(Task).get(task_id)
+    task = db.get(Task, task_id)
     print(f"Status after fail 1: {task.status}")
     print(f"Retry count: {task.retry_count}")
     print(f"Run at: {task.run_at}")
@@ -58,7 +58,7 @@ def test_backoff_logic(mock_queue):
     sem.acquire()
     process_task(task_id, sem)
     
-    task = db.query(Task).get(task_id)
+    task = db.get(Task, task_id)
     print(f"Status after fail 2: {task.status}")
     print(f"Retry count: {task.retry_count}")
     # After fail 2, retry_count=2. Backoff = 5 * (2^(2-1)) = 10s

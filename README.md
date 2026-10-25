@@ -76,4 +76,3 @@ The cluster includes:
 
 ## 📖 Documentation
 - [Architecture Deep Dive](ARCHITECTURE.md) - How the engine works under the hood.
-- [Interview Defense Pack](INTERVIEW_DEFENSE.md) - Technical discussion points and design decisions.

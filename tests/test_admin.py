@@ -87,10 +87,10 @@ def test_admin_dashboard(mock_q):
     response = client.post("/admin/tasks/t4/requeue", headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "requeued"
-    mock_q.enqueue.assert_called_once_with("t4", priority=db.query(Task).get("t4").priority)
+    mock_q.enqueue.assert_called_once_with("t4", priority=db.get(Task, "t4").priority)
     
     # Verify db reset
-    t4 = db.query(Task).get("t4")
+    t4 = db.get(Task, "t4")
     assert t4.status == TaskStatus.QUEUED
     assert t4.retry_count == 0
     assert t4.last_error is None

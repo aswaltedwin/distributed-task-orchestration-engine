@@ -35,7 +35,7 @@ def get_api_key(api_key: str = Security(api_key_header)):
         if count == 1:
             queue.redis.expire(redis_key, 60)
         
-        if count > settings.RATE_LIMIT_PER_MINUTE:
+        if isinstance(count, int) and count > settings.RATE_LIMIT_PER_MINUTE:
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
     except HTTPException:
         raise

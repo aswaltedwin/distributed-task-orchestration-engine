@@ -53,7 +53,7 @@ def test_idempotency_logic():
         # 6. Test race condition simulation
         # Simulate a concurrent insert by manually adding a task with same key just before API call
         key2 = "race-key"
-        db.add(Task(id="manual-id", task_type="test", idempotency_key=key2))
+        db.add(Task(id="manual-id", task_type="test", payload={}, idempotency_key=key2))
         db.commit()
         
         resp3 = client.post("/tasks", json={

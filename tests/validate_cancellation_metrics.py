@@ -65,7 +65,7 @@ def test_cancellation_and_metrics(mock_main_q, mock_worker_q):
     client.post(f"/tasks/{c_id}/cancel", headers=headers)
     worker_thread.join(timeout=5)
     
-    task = db.query(Task).get(c_id)
+    task = db.get(Task, c_id)
     print(f"Task status: {task.status}, Cancel Requested: {task.cancel_requested}")
     t7_pass = task.status == TaskStatus.CANCELLED and task.cancel_requested == True
 

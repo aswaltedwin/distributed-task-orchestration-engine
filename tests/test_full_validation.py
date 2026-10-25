@@ -47,7 +47,7 @@ def run_validation():
         sem = threading.BoundedSemaphore(1)
         sem.acquire()
         process_task(task_id, sem)
-        task = db.query(Task).get(task_id)
+        task = db.get(Task, task_id)
         results["T1_HAPPY_PATH"] = task.status == TaskStatus.SUCCESS
 
         # TEST 2: Concurrency
@@ -71,12 +71,12 @@ def run_validation():
         f_id = client.post("/tasks", json={"task_type": "fail", "payload": {}}, headers=headers).json()["task_id"]
         for _ in range(4): # 1 + 3 retries
             with SessionLocal() as s_db:
-                task = s_db.query(Task).get(f_id)
+                task = s_db.get(Task, f_id)
                 task.status = TaskStatus.QUEUED
                 s_db.commit()
             sem.acquire()
             process_task(f_id, sem)
-        task = db.query(Task).get(f_id)
+        task = db.get(Task, f_id)
         results["T3_RETRY_DLQ"] = task.status == TaskStatus.DEAD_LETTER
 
         # TEST 4: Reaper (Using utcnow)
@@ -87,8 +87,8 @@ def run_validation():
         with patch("app.reaper.SessionLocal", SessionLocal), patch("app.reaper.queue", mock_worker_q), patch("time.sleep", side_effect=InterruptedError):
             try: run_reaper(threshold_seconds=15)
             except InterruptedError: pass
-        db.refresh(db.query(Task).get(c_id))
-        results["T4_REAPER"] = db.query(Task).get(c_id).status == TaskStatus.QUEUED
+        db.refresh(db.get(Task, c_id))
+        results["T4_REAPER"] = db.get(Task, c_id).status == TaskStatus.QUEUED
 
         # TEST 5: Sweeper (Using utcnow)
         print("TEST 5: Sweeper...")
@@ -118,7 +118,7 @@ def run_validation():
         resp = client.post("/tasks", json={"task_type": "echo", "payload": {}, "run_at": future.isoformat()}, headers=headers)
         sch_id = resp.json()["task_id"]
         
-        task = db.query(Task).get(sch_id)
+        task = db.get(Task, sch_id)
         is_init_scheduled = task.status == TaskStatus.SCHEDULED
         
         # Manually make it past due
@@ -129,7 +129,7 @@ def run_validation():
             try: run_scheduler()
             except InterruptedError: pass
             
-        task = db.query(Task).get(sch_id)
+        task = db.get(Task, sch_id)
         results["T6_SCHEDULING"] = is_init_scheduled and task.status == TaskStatus.QUEUED
         print(f"  Status: {task.status}")
 

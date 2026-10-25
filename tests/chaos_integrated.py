@@ -86,7 +86,7 @@ def test_distributed_chaos(SessionLocal):
     
     time.sleep(2)
     db = SessionLocal()
-    task = db.query(Task).get(tid)
+    task = db.get(Task, tid)
     owner1 = task.claimed_by
     print(f"Task {tid} claimed by Worker: {owner1}")
     
@@ -97,7 +97,7 @@ def test_distributed_chaos(SessionLocal):
     time.sleep(10)
     
     db.expire_all()
-    task = db.query(Task).get(tid)
+    task = db.get(Task, tid)
     print(f"Task {tid} Status: {task.status}, Retry Count: {task.retry_count}")
     assert task.status == TaskStatus.QUEUED or task.retry_count > 0
     print("SUCCESS: Reaper recovered task from dead worker.")
@@ -120,7 +120,7 @@ def test_distributed_chaos(SessionLocal):
     
     time.sleep(5)
     db.expire_all()
-    high_task = db.query(Task).get(high_tid)
+    high_task = db.get(Task, high_tid)
     print(f"HIGH Task Status: {high_task.status}")
     assert high_task.status in [TaskStatus.RUNNING, TaskStatus.SUCCESS]
     print("SUCCESS: High priority task prioritized over LOW backlog.")
